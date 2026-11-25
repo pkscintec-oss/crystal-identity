@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prasad K — CRYSTAL IDENTITY | Interactive 3D Optical Science Experience</title>
+  <meta name="description" content="Prasad K — Crystal Identity: Interactive 3D Optical Raymarching Lab with live 3D engraved typography, physically inspired refraction, chromatic dispersion, and classroom optical experiments.">
+  <meta name="theme-color" content="#040711">
+  <meta property="og:title" content="Prasad K — CRYSTAL IDENTITY | Interactive 3D Optical Science Experience">
+  <meta property="og:description" content="Explore real-time WebGL2 3D optical raymarching, refractive crystal materials, chromatic dispersion, and live 3D engraved typography.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<canvas id="gl-canvas" aria-label="Interactive 3D Crystal Identity WebGL2 Canvas"></canvas>
+
+<div id="orbit-hint" class="orbit-hint">Drag to orbit crystal &bull; Scroll to zoom</div>
+
+<!-- Top HUD -->
+<header class="top-hud">
+  <div class="brand-badge">
+    <div class="brand-orb" aria-hidden="true"></div>
+    <div>
+      <div class="brand-title">PRASAD K &bull; CRYSTAL IDENTITY</div>
+      <div class="brand-sub">Interactive 3D Optical Raymarching Lab</div>
+    </div>
+  </div>
+
+  <div class="top-actions">
+    <button id="btn-play-pause" class="hud-btn" title="Pause or Resume Animation (Space)">
+      <svg id="icon-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      <svg id="icon-play" viewBox="0 0 24 24" style="display:none;"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+      <span id="label-play-pause">Pause</span>
+    </button>
+    <button id="btn-reset" class="hud-btn" title="Reset All Settings">
+      <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      <span>Reset</span>
+    </button>
+    <button id="btn-fullscreen" class="hud-btn" title="Toggle Full Screen">
+      <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+      <span>Fullscreen</span>
+    </button>
+    <button id="btn-toggle-panel" class="hud-btn active" title="Show or Hide Control Panel">
+      <svg viewBox="0 0 24 24"><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6"/></svg>
+      <span>Controls</span>
+    </button>
+  </div>
+</header>
+
+<!-- Presentation Mode Exit Button -->
+<button id="btn-exit-presentation" class="hud-btn presentation-exit" title="Exit Presentation Mode (Esc)">
+  <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  <span>Exit Presentation (Esc)</span>
+</button>
+
+<!-- Classroom WOW Feature Dock -->
+<div class="wow-dock">
+  <div id="science-telemetry" class="science-telemetry" aria-live="polite">
+    <div class="telemetry-metric">
+      <span class="telemetry-label">Refractive Index (n)</span>
+      <span id="tel-ior" class="telemetry-val">1.52</span>
+    </div>
+    <div class="telemetry-metric">
+      <span class="telemetry-label">Critical Angle (&theta;c)</span>
+      <span id="tel-crit" class="telemetry-val">41.1&deg;</span>
+    </div>
+    <div class="telemetry-metric">
+      <span class="telemetry-label">Light Azimuth</span>
+      <span id="tel-az" class="telemetry-val">42&deg;</span>
+    </div>
+    <div class="telemetry-metric">
+      <span class="telemetry-label">Dispersion Spread</span>
+      <span id="tel-disp" class="telemetry-val">&Delta;n 0.045</span>
+    </div>
+  </div>
+
+  <div class="wow-bar" role="toolbar" aria-label="Classroom Experiment Modes">
+    <button id="wow-reveal" class="wow-btn" title="Condense crystal from particles and reveal name">
+      <svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>
+      Name Reveal
+    </button>
+    <button id="wow-explode" class="wow-btn" title="Separate outer glass, internal core and engraved name">
+      <svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      Exploded View
+    </button>
+    <button id="wow-xray" class="wow-btn" title="Reveal internal optical structure">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2"/></svg>
+      X-Ray Mode
+    </button>
+    <button id="wow-light" class="wow-btn" title="Orbit visible light source to demonstrate Snell's Law">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>
+      Light Experiment
+    </button>
+    <button id="wow-freeze" class="wow-btn" title="Instantly freeze flowing water into crystalline ice">
+      <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>
+      Freeze Mode
+    </button>
+    <button id="wow-present" class="wow-btn" title="Full-screen cinematic presentation mode">
+      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+      Presentation
+    </button>
+    <button id="wow-screenshot" class="wow-btn" title="Capture high-resolution PNG of your crystal">
+      <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Screenshot
+    </button>
+  </div>
+</div>
+
+<!-- Right Interactive Control Panel -->
+<aside class="control-panel" aria-label="Crystal Identity Controls">
+  <!-- Always-accessible Student Name Engraving Box -->
+  <div class="name-hero">
+    <label for="student-name-input">
+      <span>Engraved Student Name</span>
+      <span id="name-char-count" class="char-count">12 chars</span>
+    </label>
+    <input
+      id="student-name-input"
+      type="text"
+      value="STUDENT NAME"
+      maxlength="36"
+      placeholder="Type your name..."
+      autocomplete="off"
+      spellcheck="false"
+    />
+  </div>
+
+  <!-- Section Tabs -->
+  <nav class="panel-tabs" role="tablist">
+    <button class="tab-btn active" data-tab="presets" role="tab" aria-selected="true">Presets</button>
+    <button class="tab-btn" data-tab="name" role="tab" aria-selected="false">Name</button>
+    <button class="tab-btn" data-tab="optics" role="tab" aria-selected="false">Optics</button>
+    <button class="tab-btn" data-tab="surface" role="tab" aria-selected="false">Surface</button>
+    <button class="tab-btn" data-tab="light" role="tab" aria-selected="false">Light</button>
+    <button class="tab-btn" data-tab="volume" role="tab" aria-selected="false">Volume</button>
+  </nav>
+
+  <div class="panel-body">
+    <!-- TAB 1: SHAPE & MATERIAL PRESETS -->
+    <div id="tab-presets" class="tab-pane active">
+      <div class="section-heading">Crystal Shape</div>
+      <div id="shape-grid" class="shape-grid"></div>
+      <div class="section-heading" style="margin-top:4px;">Optical Material Presets</div>
+      <div id="preset-grid" class="preset-grid"></div>
+    </div>
+
+    <!-- TAB 2: NAME CONTROLS -->
+    <div id="tab-name" class="tab-pane">
+      <div class="section-heading">3D Engraving Typography</div>
+
+      <div class="ctrl-group">
+        <label class="ctrl-label" for="ctrl-font">Font Style</label>
+        <select id="ctrl-font">
+          <option value="sans">Geometric Sans (Modern)</option>
+          <option value="serif">Classical Serif (Exhibition)</option>
+          <option value="mono">Technical Mono (Science)</option>
+          <option value="display">Bold Display (Monument)</option>
+          <option value="script">Calligraphic Italic (Artisan)</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Text Size</span>
+          <span class="ctrl-value" id="val-textSize">1.00</span>
+        </div>
+        <input type="range" id="ctrl-textSize" min="0.55" max="1.45" step="0.01" value="1.00">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Engraving Depth</span>
+          <span class="ctrl-value" id="val-textDepth">0.065</span>
+        </div>
+        <input type="range" id="ctrl-textDepth" min="0.02" max="0.22" step="0.005" value="0.065">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Stroke Thickness</span>
+          <span class="ctrl-value" id="val-textThickness">0.000</span>
+        </div>
+        <input type="range" id="ctrl-textThickness" min="-0.006" max="0.008" step="0.0005" value="0.000">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Text Rotation Y</span>
+          <span class="ctrl-value" id="val-textRotY">0&deg;</span>
+        </div>
+        <input type="range" id="ctrl-textRotY" min="-180" max="180" step="1" value="0">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Text Tilt X</span>
+          <span class="ctrl-value" id="val-textRotX">0&deg;</span>
+        </div>
+        <input type="range" id="ctrl-textRotX" min="-45" max="45" step="1" value="0">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Position X</span>
+          <span class="ctrl-value" id="val-textPosX">0.00</span>
+        </div>
+        <input type="range" id="ctrl-textPosX" min="-0.35" max="0.35" step="0.01" value="0.00">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Position Y</span>
+          <span class="ctrl-value" id="val-textPosY">0.00</span>
+        </div>
+        <input type="range" id="ctrl-textPosY" min="-0.35" max="0.35" step="0.01" value="0.00">
+      </div>
+    </div>
+
+    <!-- TAB 3: OPTICAL CONTROLS -->
+    <div id="tab-optics" class="tab-pane">
+      <div class="section-heading">Refraction &amp; Optical Physics</div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Refraction Strength</span>
+          <span class="ctrl-value" id="val-refraction">1.00</span>
+        </div>
+        <input type="range" id="ctrl-refraction" min="0.00" max="1.50" step="0.01" value="1.00">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Index of Refraction (IOR)</span>
+          <span class="ctrl-value" id="val-ior">1.52</span>
+        </div>
+        <input type="range" id="ctrl-ior" min="1.02" max="2.42" step="0.01" value="1.52">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Reflection Intensity</span>
+          <span class="ctrl-value" id="val-reflection">1.08</span>
+        </div>
+        <input type="range" id="ctrl-reflection" min="0.00" max="2.00" step="0.02" value="1.08">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Fresnel Strength</span>
+          <span class="ctrl-value" id="val-fresnel">1.15</span>
+        </div>
+        <input type="range" id="ctrl-fresnel" min="0.10" max="2.50" step="0.02" value="1.15">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Chromatic Dispersion</span>
+          <span class="ctrl-value" id="val-dispersion">0.045</span>
+        </div>
+        <input type="range" id="ctrl-dispersion" min="0.000" max="0.180" step="0.002" value="0.045">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Transparency</span>
+          <span class="ctrl-value" id="val-transparency">0.95</span>
+        </div>
+        <input type="range" id="ctrl-transparency" min="0.15" max="1.00" step="0.01" value="0.95">
+      </div>
+    </div>
+
+    <!-- TAB 4: SURFACE CONTROLS -->
+    <div id="tab-surface" class="tab-pane">
+      <div class="section-heading">Surface Micro-Structure &amp; Fluid</div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Frost Amount</span>
+          <span class="ctrl-value" id="val-frost">0.03</span>
+        </div>
+        <input type="range" id="ctrl-frost" min="0.00" max="1.00" step="0.01" value="0.03">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Roughness</span>
+          <span class="ctrl-value" id="val-roughness">0.05</span>
+        </div>
+        <input type="range" id="ctrl-roughness" min="0.00" max="1.00" step="0.01" value="0.05">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Smoothness</span>
+          <span class="ctrl-value" id="val-smoothness">0.95</span>
+        </div>
+        <input type="range" id="ctrl-smoothness" min="0.00" max="1.00" step="0.01" value="0.95">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Water Distortion</span>
+          <span class="ctrl-value" id="val-waterDistortion">0.16</span>
+        </div>
+        <input type="range" id="ctrl-waterDistortion" min="0.00" max="1.00" step="0.01" value="0.16">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Surface Detail</span>
+          <span class="ctrl-value" id="val-surfaceDetail">0.22</span>
+        </div>
+        <input type="range" id="ctrl-surfaceDetail" min="0.00" max="1.00" step="0.01" value="0.22">
+      </div>
+    </div>
+
+    <!-- TAB 5: LIGHTING CONTROLS -->
+    <div id="tab-light" class="tab-pane">
+      <div class="section-heading">Studio &amp; Caustic Lighting</div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Key Light Intensity</span>
+          <span class="ctrl-value" id="val-lightIntensity">1.35</span>
+        </div>
+        <input type="range" id="ctrl-lightIntensity" min="0.20" max="3.00" step="0.05" value="1.35">
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">Light Colour</span>
+        <div class="color-row">
+          <input type="color" id="ctrl-lightColor" value="#d8f0ff">
+          <div class="color-swatches">
+            <button type="button" class="color-dot" data-color="#d8f0ff" style="background:#d8f0ff" title="Ice White"></button>
+            <button type="button" class="color-dot" data-color="#38bdf8" style="background:#38bdf8" title="Cyan Lab"></button>
+            <button type="button" class="color-dot" data-color="#a78bfa" style="background:#a78bfa" title="Violet"></button>
+            <button type="button" class="color-dot" data-color="#fcd34d" style="background:#fcd34d" title="Solar Gold"></button>
+            <button type="button" class="color-dot" data-color="#6ee7b7" style="background:#6ee7b7" title="Aurora"></button>
+            <button type="button" class="color-dot" data-color="#f472b6" style="background:#f472b6" title="Magenta"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Light Azimuth</span>
+          <span class="ctrl-value" id="val-lightAzimuth">42&deg;</span>
+        </div>
+        <input type="range" id="ctrl-lightAzimuth" min="-180" max="180" step="1" value="42">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Light Elevation</span>
+          <span class="ctrl-value" id="val-lightElevation">36&deg;</span>
+        </div>
+        <input type="range" id="ctrl-lightElevation" min="-45" max="85" step="1" value="36">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Rim Lighting</span>
+          <span class="ctrl-value" id="val-rimLight">1.15</span>
+        </div>
+        <input type="range" id="ctrl-rimLight" min="0.00" max="2.50" step="0.05" value="1.15">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Background Illumination</span>
+          <span class="ctrl-value" id="val-bgIllum">0.85</span>
+        </div>
+        <input type="range" id="ctrl-bgIllum" min="0.10" max="2.00" step="0.05" value="0.85">
+      </div>
+    </div>
+
+    <!-- TAB 6: VOLUME & CAMERA CONTROLS -->
+    <div id="tab-volume" class="tab-pane">
+      <div class="section-heading">Volume, Particles &amp; Camera</div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Crystal Size</span>
+          <span class="ctrl-value" id="val-sphereSize">1.00</span>
+        </div>
+        <input type="range" id="ctrl-sphereSize" min="0.68" max="1.35" step="0.01" value="1.00">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Internal Glow</span>
+          <span class="ctrl-value" id="val-internalGlow">0.95</span>
+        </div>
+        <input type="range" id="ctrl-internalGlow" min="0.00" max="2.20" step="0.05" value="0.95">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Particle Density</span>
+          <span class="ctrl-value" id="val-particles">65%</span>
+        </div>
+        <input type="range" id="ctrl-particles" min="0" max="100" step="1" value="65">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Animation Speed</span>
+          <span class="ctrl-value" id="val-animSpeed">1.00x</span>
+        </div>
+        <input type="range" id="ctrl-animSpeed" min="0.00" max="2.50" step="0.05" value="1.00">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Camera Rotation</span>
+          <span class="ctrl-value" id="val-camYaw">0&deg;</span>
+        </div>
+        <input type="range" id="ctrl-camYaw" min="-180" max="180" step="1" value="0">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Camera Elevation</span>
+          <span class="ctrl-value" id="val-camPitch">6&deg;</span>
+        </div>
+        <input type="range" id="ctrl-camPitch" min="-55" max="55" step="1" value="6">
+      </div>
+
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Camera Zoom</span>
+          <span class="ctrl-value" id="val-camZoom">4.35</span>
+        </div>
+        <input type="range" id="ctrl-camZoom" min="2.40" max="6.20" step="0.05" value="4.35">
+      </div>
+    </div>
+  </div>
+
+  <footer class="panel-footer">
+    <span class="status-pill"><span class="status-dot"></span><span id="gpu-badge">WebGL2 Ready</span></span>
+    <span id="fps-badge">60 FPS</span>
+  </footer>
+</aside>
+
+<!-- Toast Notification -->
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- Screenshot Modal -->
+<div id="screenshot-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modal-title">Crystal Capture Ready</h3>
+      <button id="btn-close-modal" class="hud-btn" style="height:30px;padding:0 10px;">Close</button>
+    </div>
+    <img id="screenshot-img" class="modal-preview" alt="Captured 3D Crystal Identity">
+    <div class="modal-actions">
+      <a id="btn-download-shot" class="hud-btn active" download="crystal-identity.png" style="text-decoration:none;">Download PNG</a>
+    </div>
+  </div>
+</div>
+
+<!-- WebGL2 Error Fallback -->
+<div id="webgl-error">
+  <div class="error-card">
+    <h2>WebGL2 Graphics Required</h2>
+    <p id="webgl-error-msg">
+      Your browser or device could not initialize a WebGL2 context. Please enable hardware acceleration or open Crystal Identity in a modern version of Chrome, Edge, Firefox, or Safari.
+    </p>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
