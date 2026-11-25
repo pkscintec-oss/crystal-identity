@@ -1,16 +1,13 @@
 export const CRYSTAL_VERT = `#version 300 es
 precision highp float;
-out vec2 vUv;
+in vec2 aPos;
 void main() {
-  vec2 pos = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
-  vUv = pos;
-  gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+  gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 
 export const CRYSTAL_FRAG = `#version 300 es
 precision highp float;
 
-in vec2 vUv;
 out vec4 fragColor;
 
 uniform vec2 uResolution;
@@ -82,14 +79,14 @@ float noise3D(vec3 p) {
   vec3 f = fract(p);
   f = f * f * (3.0 - 2.0 * f);
 
-  float n000 = hash13(i + vec3(0,0,0));
-  float n100 = hash13(i + vec3(1,0,0));
-  float n010 = hash13(i + vec3(0,1,0));
-  float n110 = hash13(i + vec3(1,1,0));
-  float n001 = hash13(i + vec3(0,0,1));
-  float n101 = hash13(i + vec3(1,0,1));
-  float n011 = hash13(i + vec3(0,1,1));
-  float n111 = hash13(i + vec3(1,1,1));
+  float n000 = hash13(i + vec3(0.0, 0.0, 0.0));
+  float n100 = hash13(i + vec3(1.0, 0.0, 0.0));
+  float n010 = hash13(i + vec3(0.0, 1.0, 0.0));
+  float n110 = hash13(i + vec3(1.0, 1.0, 0.0));
+  float n001 = hash13(i + vec3(0.0, 0.0, 1.0));
+  float n101 = hash13(i + vec3(1.0, 0.0, 1.0));
+  float n011 = hash13(i + vec3(0.0, 1.0, 1.0));
+  float n111 = hash13(i + vec3(1.0, 1.0, 1.0));
 
   float nx00 = mix(n000, n100, f.x);
   float nx10 = mix(n010, n110, f.x);
@@ -103,12 +100,9 @@ float noise3D(vec3 p) {
 
 float fbm(vec3 p) {
   float v = 0.0;
-  float a = 0.5;
-  for (int i = 0; i < 3; i++) {
-    v += a * noise3D(p);
-    p = p * 2.05 + vec3(13.1, 7.7, 5.3);
-    a *= 0.5;
-  }
+  v += 0.55 * noise3D(p);
+  p = p * 2.05 + vec3(13.1, 7.7, 5.3);
+  v += 0.35 * noise3D(p);
   return v;
 }
 
@@ -152,7 +146,8 @@ float sdEngravedText(vec3 p) {
   vec2 uv = vec2(q.x / boxW + 0.5, q.y / boxH + 0.5);
   vec2 clampedUv = clamp(uv, vec2(0.002), vec2(0.998));
 
-  float rawSample = texture(uTextSDF, clampedUv).r;
+  // Explicit LOD 0 avoids screen-derivative restrictions in dynamic raymarch loops
+  float rawSample = textureLod(uTextSDF, clampedUv, 0.0).r;
   float d2dNorm = (uSdfIsR8 > 0.5) ? (rawSample - 0.5) * 0.70 : rawSample;
   float d2d = d2dNorm * boxH - uTextThickness;
 
@@ -161,7 +156,7 @@ float sdEngravedText(vec3 p) {
     d2d = max(d2d, 0.0) + length(outBox);
   }
 
-  // Inward-compensated bevel keeps letter silhouettes razor-sharp with polished 3D edges!
+  // Inward-compensated bevel keeps letter silhouettes razor-sharp with polished 3D edges
   float bevel = min(0.0045, uTextDepth * 0.22);
   float dz = abs(q.z) - max(0.008, uTextDepth - bevel);
   vec2 w = vec2(d2d + bevel, dz);
@@ -178,12 +173,14 @@ float sdEngravedText(vec3 p) {
 }
 
 vec3 calcTextNormal(vec3 p) {
+  const vec2 k = vec2(1.0, -1.0);
   const float e = 0.0022;
-  return normalize(vec3(
-    sdEngravedText(p + vec3(e, 0, 0)) - sdEngravedText(p - vec3(e, 0, 0)),
-    sdEngravedText(p + vec3(0, e, 0)) - sdEngravedText(p - vec3(0, e, 0)),
-    sdEngravedText(p + vec3(0, 0, e)) - sdEngravedText(p - vec3(0, 0, e))
-  ));
+  return normalize(
+    k.xyy * sdEngravedText(p + k.xyy * e) +
+    k.yyx * sdEngravedText(p + k.yyx * e) +
+    k.yxy * sdEngravedText(p + k.yxy * e) +
+    k.xxx * sdEngravedText(p + k.xxx * e)
+  );
 }
 
 /* --- Internal Optical Core SDF --- */
@@ -201,50 +198,71 @@ float sdInternalCore(vec3 p) {
 
 /* --- Multi-Shape Optical Crystal SDF Library --- */
 float sdBaseShape(vec3 p, float R) {
+  float d = length(p) - R;
   if (uShapeType == 1) {
-    // Faceted Brilliant Diamond Gem (octahedron intersected with crown table)
     vec3 q = p;
     q.y *= 0.92;
     vec3 a = abs(q);
     float oct = (a.x + a.y + a.z - R * 1.38) * 0.57735;
     float crown = q.y - R * 0.74;
     float girdle = length(q.xz) - R * 1.04;
-    float d = max(oct, crown);
-    d = max(d, girdle * 0.85);
-    return d - 0.025 * R;
+    d = max(max(oct, crown), girdle * 0.85) - 0.025 * R;
   } else if (uShapeType == 2) {
-    // Hexagonal Quartz Crystal Prism with tapered pyramidal tips
     vec3 q = p;
     vec3 a = abs(q);
     float hex = max(a.x * 0.866025 + a.z * 0.5, a.z) - R * 0.86;
     float caps = a.y - R * 1.18;
     float taper = (a.x * 0.866025 + a.z * 0.5) * 0.78 + a.y * 0.62 - R * 1.16;
-    float d = max(max(hex, caps), taper);
-    return d - 0.03 * R;
+    d = max(max(hex, caps), taper) - 0.03 * R;
   } else if (uShapeType == 3) {
-    // Rounded Optical K9 Glass Cube
     vec3 b = vec3(R * 0.82);
     vec3 q = abs(p) - b;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - R * 0.14;
+    d = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - R * 0.14;
   } else if (uShapeType == 4) {
-    // Sculpted 3D Crystal Heart
     vec3 q = p / (R * 0.98);
     q.y += 0.10;
     q.z *= 1.48;
     float x = abs(q.x);
     float y = q.y - sqrt(x * x + 0.035) * 0.54 + 0.22;
-    float d = length(vec3(x, y, q.z)) - 0.86;
-    return d * (R * 0.68);
+    d = (length(vec3(x, y, q.z)) - 0.86) * (R * 0.68);
   } else if (uShapeType == 5) {
-    // Suspended Liquid-Crystal Water Teardrop
     vec3 q = p / (R * 0.96);
     q.y += 0.12;
     float stretch = clamp((q.y + 0.75) * 0.55, 0.0, 1.0);
     vec3 td = vec3(q.x * (1.0 + stretch * 0.85), q.y * 0.82, q.z * (1.0 + stretch * 0.85));
-    return (length(td) - 0.86) * (R * 0.68);
+    d = (length(td) - 0.86) * (R * 0.68);
   }
-  // Default (0): Pure Optical Crystal Sphere
-  return length(p) - R;
+  return d;
+}
+
+/* --- Lightweight Outer Shell SDF for Interior Exit Distance --- */
+float sdOuterShellSimple(vec3 p) {
+  float revealScale = smoothstep(0.02, 0.72, uReveal);
+  float R = uSphereSize * max(0.01, revealScale);
+  float d = 0.0;
+  if (uExplode > 0.001) {
+    vec3 pL = p - vec3(-0.68 * uExplode, 0.16 * uExplode, 0.0);
+    vec3 pR = p - vec3( 0.68 * uExplode, -0.16 * uExplode, 0.0);
+    float bL = sdBaseShape(pL, R);
+    float bR = sdBaseShape(pR, R);
+    float sL = max(max(bL, pL.x - 0.02), -(bL + 0.14));
+    float sR = max(max(bR, -pR.x - 0.02), -(bR + 0.14));
+    d = min(sL, sR);
+  } else {
+    d = sdBaseShape(p, R);
+  }
+  return d * 0.84;
+}
+
+vec3 calcSimpleNormal(vec3 p) {
+  const vec2 k = vec2(1.0, -1.0);
+  const float e = 0.0025;
+  return normalize(
+    k.xyy * sdOuterShellSimple(p + k.xyy * e) +
+    k.yyx * sdOuterShellSimple(p + k.yyx * e) +
+    k.yxy * sdOuterShellSimple(p + k.yxy * e) +
+    k.xxx * sdOuterShellSimple(p + k.xxx * e)
+  );
 }
 
 /* --- Outer Optical Crystal / Water Geometry SDF --- */
@@ -256,14 +274,14 @@ float sdOuterCrystal(vec3 p) {
   float revealScale = smoothstep(0.02, 0.72, uReveal);
   float R = uSphereSize * max(0.01, revealScale);
 
-  float dSphere;
+  float dSphere = 0.0;
   if (uExplode > 0.001) {
     vec3 pL = p - vec3(-0.68 * uExplode, 0.16 * uExplode, 0.0);
     vec3 pR = p - vec3( 0.68 * uExplode, -0.16 * uExplode, 0.0);
-    float sL = max(sdBaseShape(pL, R), pL.x - 0.02);
-    float sR = max(sdBaseShape(pR, R), -pR.x - 0.02);
-    sL = max(sL, -(sdBaseShape(pL, R) + 0.14));
-    sR = max(sR, -(sdBaseShape(pR, R) + 0.14));
+    float bL = sdBaseShape(pL, R);
+    float bR = sdBaseShape(pR, R);
+    float sL = max(max(bL, pL.x - 0.02), -(bL + 0.14));
+    float sR = max(max(bR, -pR.x - 0.02), -(bR + 0.14));
     dSphere = min(sL, sR);
   } else {
     dSphere = sdBaseShape(p, R);
@@ -273,7 +291,7 @@ float sdOuterCrystal(vec3 p) {
   float wave = 0.0;
   if (uWaterDistortion > 0.001) {
     vec3 wp = p * 2.5 + vec3(0.0, -t * 0.85, t * 0.55);
-    wave += (fbm(wp) - 0.5) * 0.070 * uWaterDistortion * (1.0 - uFreeze * 0.85);
+    wave += (noise3D(wp) - 0.5) * 0.068 * uWaterDistortion * (1.0 - uFreeze * 0.85);
     wave += sin(p.y * 7.0 - t * 2.2 + p.x * 3.0) * 0.008 * uWaterDistortion * fluidFactor;
   }
 
@@ -287,18 +305,36 @@ float sdOuterCrystal(vec3 p) {
     facets = mix(0.0, crystalNoise, fAmt) + max(0.0, oct) * freezeAmt * 0.14;
   }
 
-  float revealNoise = (1.0 - smoothstep(0.35, 0.95, uReveal)) * (fbm(p * 4.5 - vec3(0.0, uTime * 2.0, 0.0)) - 0.35) * 0.25;
+  float revealNoise = 0.0;
+  if (uReveal < 0.96) {
+    revealNoise = (1.0 - smoothstep(0.35, 0.95, uReveal)) * (noise3D(p * 4.5 - vec3(0.0, uTime * 2.0, 0.0)) - 0.35) * 0.25;
+  }
 
   return (dSphere + wave + facets + revealNoise) * 0.84;
 }
 
 vec3 calcOuterNormal(vec3 p) {
-  const float e = 0.0025;
-  vec3 n = normalize(vec3(
-    sdOuterCrystal(p + vec3(e, 0, 0)) - sdOuterCrystal(p - vec3(e, 0, 0)),
-    sdOuterCrystal(p + vec3(0, e, 0)) - sdOuterCrystal(p - vec3(0, e, 0)),
-    sdOuterCrystal(p + vec3(0, 0, e)) - sdOuterCrystal(p - vec3(0, 0, e))
-  ));
+  vec3 n = calcSimpleNormal(p);
+  float fluidFactor = (1.0 - uFreeze);
+  float t = uTime * fluidFactor;
+
+  // Perturb normal for water ripples without re-evaluating full crystal SDF 4 times
+  if (uWaterDistortion > 0.001) {
+    vec3 wp = p * 2.5 + vec3(0.0, -t * 0.85, t * 0.55);
+    float w0 = noise3D(wp);
+    vec3 wn = vec3(
+      noise3D(wp + vec3(0.02, 0.0, 0.0)) - w0,
+      noise3D(wp + vec3(0.0, 0.02, 0.0)) - w0,
+      noise3D(wp + vec3(0.0, 0.0, 0.02)) - w0
+    ) * 3.2;
+    wn += vec3(
+      cos(p.y * 7.0 - t * 2.2 + p.x * 3.0) * 0.024,
+      cos(p.y * 7.0 - t * 2.2 + p.x * 3.0) * 0.056,
+      0.0
+    ) * fluidFactor;
+    n = normalize(n + wn * uWaterDistortion * (1.0 - uFreeze * 0.85));
+  }
+
   float microAmt = (uFrost * 0.18 + uRoughness * 0.12 + uSurfaceDetail * 0.04) * (1.0 - uSmoothness * 0.55);
   if (microAmt > 0.004) {
     vec3 mn = vec3(
@@ -322,23 +358,18 @@ vec3 sampleEnvironment(vec3 dir) {
   col += vec3(0.016, 0.008, 0.045) * smoothstep(-0.2, 0.5, dir.x) * (1.0 - abs(y));
   col *= uBgIllum;
 
-  // Overhead curved exhibition softbox (gives ultra-realistic museum glass highlights)
   float topBox = smoothstep(0.68, 0.94, dot(dir, normalize(vec3(0.18, 0.92, 0.34))));
   col += uLightColor * topBox * (1.45 * uLightIntensity);
 
-  // Secondary cyan studio strip light on left
   float leftStrip = smoothstep(0.76, 0.97, dot(dir, normalize(vec3(-0.88, 0.28, 0.38))));
   col += uRimColor * leftStrip * (1.22 * uRimLight);
 
-  // Secondary violet-silver studio strip on right-back
   float rightStrip = smoothstep(0.78, 0.97, dot(dir, normalize(vec3(0.84, 0.16, -0.52))));
   col += vec3(0.58, 0.48, 1.0) * rightStrip * (0.98 * uRimLight);
 
-  // Crisp key light disk
   float keySun = pow(max(dot(dir, uLightDir), 0.0), 56.0);
   col += uLightColor * keySun * (2.8 * uLightIntensity);
 
-  // Horizon sheen
   float horizon = exp(-abs(y) * 9.0);
   col += mix(uRimColor, vec3(0.4, 0.55, 0.9), 0.5) * horizon * 0.15 * uBgIllum;
 
@@ -346,7 +377,18 @@ vec3 sampleEnvironment(vec3 dir) {
 }
 
 /* --- Procedural Optical Floor Caustics --- */
+float evalCausticChannel(vec2 cp, float shift, float tAnim) {
+  vec2 pCh = cp * (1.0 + shift * 0.8) + vec2(shift * 0.25, 0.0);
+  float w1 = sin(pCh.x * 7.5 + tAnim + sin(pCh.y * 6.0 - tAnim * 0.8));
+  float w2 = cos(pCh.y * 8.2 - tAnim * 1.1 + cos(pCh.x * 5.5 + tAnim));
+  float cVal = pow(clamp((w1 * w2) * 0.5 + 0.5, 0.0, 1.0), 4.0);
+  float focusRing = exp(-pow(length(pCh) - uSphereSize * 0.36, 2.0) * 5.2);
+  float focusCore = exp(-dot(pCh, pCh) * 3.2);
+  return (cVal * 0.85 + 0.35) * (focusRing * 0.9 + focusCore * 1.15);
+}
+
 vec3 renderFloor(vec3 ro, vec3 rd, float floorY) {
+  if (abs(rd.y) < 1e-4) return vec3(0.0);
   float tFloor = (floorY - ro.y) / rd.y;
   if (tFloor <= 0.0 || tFloor > 18.0) return vec3(0.0);
 
@@ -363,17 +405,11 @@ vec3 renderFloor(vec3 ro, vec3 rd, float floorY) {
 
   float tAnim = uTime * 0.7 * (1.0 - uFreeze);
   float dispShift = uDispersion * 1.45;
-  vec3 caustic = vec3(0.0);
-  for (int ch = 0; ch < 3; ch++) {
-    float shift = (float(ch) - 1.0) * dispShift;
-    vec2 pCh = cp * (1.0 + shift * 0.8) + vec2(shift * 0.25, 0.0);
-    float w1 = sin(pCh.x * 7.5 + tAnim + sin(pCh.y * 6.0 - tAnim * 0.8));
-    float w2 = cos(pCh.y * 8.2 - tAnim * 1.1 + cos(pCh.x * 5.5 + tAnim));
-    float cVal = pow(clamp((w1 * w2) * 0.5 + 0.5, 0.0, 1.0), 4.0);
-    float focusRing = exp(-pow(length(pCh) - uSphereSize * 0.36, 2.0) * 5.2);
-    float focusCore = exp(-dot(pCh, pCh) * 3.2);
-    caustic[ch] = (cVal * 0.85 + 0.35) * (focusRing * 0.9 + focusCore * 1.15);
-  }
+  vec3 caustic = vec3(
+    evalCausticChannel(cp, -dispShift, tAnim),
+    evalCausticChannel(cp, 0.0, tAnim),
+    evalCausticChannel(cp, dispShift, tAnim)
+  );
 
   vec3 floorBase = vec3(0.015, 0.028, 0.065) * uBgIllum * shadow;
   float causticStrength = uLightIntensity * uTransparency * (1.0 - uMetalness * 0.7) * (1.0 - uFrost * 0.45) * smoothstep(0.2, 0.9, uReveal);
@@ -396,15 +432,12 @@ vec3 shadeEngravedText(vec3 p, vec3 rd, vec3 n, float internalBoost) {
   vec3 h2 = normalize(normalize(vec3(-0.6, 0.4, 0.7)) + v);
   float spec2 = pow(max(dot(n, h2), 0.0), 22.0) * uRimLight * 0.75;
 
-  // Animated internal caustic shimmer across engraved crystal letters
   float tAnim = uTime * 1.1 * (1.0 - uFreeze);
   float shimmer = 0.5 + 0.5 * sin(p.x * 16.0 + tAnim + sin(p.y * 12.0 - tAnim * 0.7));
   shimmer = pow(shimmer, 3.0) * 0.28 * uLightIntensity;
 
-  // Chromatic prism edge glint on engraved bevels
   vec3 edgePrism = spectralColor(ndv * 1.3 + p.x * 0.65 + uTime * 0.12) * (uDispersion * 3.6 + uIridescence * 0.45);
 
-  // Sculpted 3D crystal engraving: deep translucent faces + luminous beveled Fresnel rims
   float bevelRim = pow(1.0 - clamp(ndv, 0.0, 1.0), 1.6);
   vec3 faceCol = mix(uRimColor * 0.42, uEngravingColor * 0.78, 0.45 + 0.55 * ndl + 0.25 * ndlBack);
   vec3 rimGlow = mix(uRimColor, vec3(0.95, 0.98, 1.0), 0.55) * bevelRim * (0.75 + uInternalGlow * 0.65);
@@ -427,24 +460,18 @@ vec3 shadeEngravedText(vec3 p, vec3 rd, vec3 n, float internalBoost) {
 vec3 traceInteriorChromatic(vec3 entryP, vec3 rdIn, vec3 rdR, vec3 rdB, float effIOR, float disp, out bool hitTextOut) {
   float t = 0.015;
   float maxT = uSphereSize * 2.45;
-  vec3 textCol = vec3(0.0);
   bool hitText = false;
+  vec3 hitP = entryP;
   float coreGlow = 0.0;
 
+  // Keep the raymarch loop pure (distance checks only) so GPU compilers emit a fast hardware loop
   for (int i = 0; i < 64; i++) {
     vec3 p = entryP + rdIn * t;
 
     float dTxt = sdEngravedText(p);
     if (dTxt < 0.0015) {
-      vec3 nt = calcTextNormal(p);
-      textCol = shadeEngravedText(p, rdIn, nt, 1.20);
-      // Add subtle chromatic fringe on the engraved lettering edges
-      if (disp > 0.005) {
-        float edgeR = clamp(1.0 - abs(sdEngravedText(p + vec3(disp * 0.16, 0.0, 0.0))) * 40.0, 0.0, 1.0);
-        float edgeB = clamp(1.0 - abs(sdEngravedText(p - vec3(disp * 0.16, 0.0, 0.0))) * 40.0, 0.0, 1.0);
-        textCol += vec3(edgeR * 0.22, 0.0, edgeB * 0.26) * (disp * 8.0);
-      }
       hitText = true;
+      hitP = p;
       break;
     }
 
@@ -452,7 +479,7 @@ vec3 traceInteriorChromatic(vec3 entryP, vec3 rdIn, vec3 rdR, vec3 rdB, float ef
     float coreVis = max(uXray * 0.95, max(uExplode * 0.75, 0.14 * uInternalGlow));
     coreGlow += exp(-abs(dCore) * 34.0) * 0.052 * coreVis;
 
-    float dOut = -sdOuterCrystal(p);
+    float dOut = -sdOuterShellSimple(p);
     if (dOut < 0.004 && t > 0.08) break;
 
     float stepD = min(dTxt, max(0.012, dOut));
@@ -460,11 +487,21 @@ vec3 traceInteriorChromatic(vec3 entryP, vec3 rdIn, vec3 rdR, vec3 rdB, float ef
     if (t > maxT) break;
   }
 
+  vec3 textCol = vec3(0.0);
+  if (hitText) {
+    vec3 nt = calcTextNormal(hitP);
+    textCol = shadeEngravedText(hitP, rdIn, nt, 1.20);
+    if (disp > 0.005) {
+      float edgeR = clamp(1.0 - abs(sdEngravedText(hitP + vec3(disp * 0.16, 0.0, 0.0))) * 40.0, 0.0, 1.0);
+      float edgeB = clamp(1.0 - abs(sdEngravedText(hitP - vec3(disp * 0.16, 0.0, 0.0))) * 40.0, 0.0, 1.0);
+      textCol += vec3(edgeR * 0.22, 0.0, edgeB * 0.26) * (disp * 8.0);
+    }
+  }
+
   hitTextOut = hitText;
   vec3 exitP = entryP + rdIn * t;
-  vec3 nExit = -calcOuterNormal(exitP);
+  vec3 nExit = -calcSimpleNormal(exitP);
 
-  // Chromatic RGB exit refraction (physically separates R, G, B without 3x raymarching!)
   vec3 outG = refract(rdIn, nExit, effIOR);
   vec3 bgG = (length(outG) < 0.001)
     ? sampleEnvironment(reflect(rdIn, nExit)) * 1.18
@@ -499,16 +536,13 @@ void main() {
   vec3 up = cross(right, forward);
   vec3 rd = normalize(forward * 1.65 + right * uv.x + up * uv.y);
 
-  // Base studio backdrop + floor caustics
   vec3 col = sampleEnvironment(rd);
   float floorY = -1.32 * uSphereSize;
   col += renderFloor(ro, rd, floorY);
 
-  // Subtle cosmic center halo behind sphere
   float centerGlow = exp(-dot(uv, uv) * 3.4) * 0.20 * uBgIllum;
   col += mix(uRimColor, vec3(0.36, 0.25, 0.78), 0.45) * centerGlow;
 
-  // Visible Light Source Orb during Light Experiment Mode
   if (uLightExp > 0.01) {
     vec3 lightWorldPos = uLightDir * (uSphereSize * 2.15);
     float tL = dot(lightWorldPos - ro, rd);
@@ -521,7 +555,6 @@ void main() {
     }
   }
 
-  // Fast Bounding Sphere Check (skips raymarching for ~65% of screen pixels!)
   float boundR = uSphereSize * 1.52 + uExplode * 0.95;
   vec2 bounds = intersectSphere(ro, rd, boundR);
   int hitId = 0;
@@ -564,12 +597,10 @@ void main() {
     vec3 n = calcOuterNormal(p);
     float ndv = clamp(dot(n, -rd), 0.0, 1.0);
 
-    // Schlick Fresnel
     float f0 = pow((1.0 - uIOR) / (1.0 + uIOR), 2.0);
     f0 = mix(f0, 0.82, uMetalness);
     float fres = clamp((f0 + (1.0 - f0) * pow(1.0 - ndv, 4.0)) * uFresnel, 0.0, 1.0);
 
-    // Reflection + studio specular highlights
     vec3 reflDir = reflect(rd, n);
     vec3 reflCol = sampleEnvironment(reflDir);
     float specPow = mix(18.0, 190.0, clamp(uSmoothness * (1.0 - uRoughness * 0.7), 0.0, 1.0));
@@ -577,39 +608,36 @@ void main() {
     float spec = pow(max(dot(n, halfV), 0.0), specPow) * uLightIntensity * 1.95;
     reflCol += uLightColor * spec;
 
-    // Iridescent thin-film holographic reflection tint
     if (uIridescence > 0.01) {
       vec3 irid = spectralColor(ndv * 2.2 + dot(n, uLightDir) * 0.6 + uTime * 0.08);
       reflCol = mix(reflCol, reflCol * (0.65 + 0.9 * irid) + irid * 0.30, uIridescence);
     }
 
-    // Single-pass Chromatic Refraction
     float effIOR = mix(1.0, uIOR, clamp(uRefraction, 0.0, 1.5));
     float disp = uDispersion * uRefraction;
-    vec3 rdG = normalize(refract(rd, n, 1.0 / max(1.01, effIOR)));
-    vec3 rdR = normalize(refract(rd, n, 1.0 / max(1.01, effIOR - disp)));
-    vec3 rdB = normalize(refract(rd, n, 1.0 / max(1.01, effIOR + disp)));
+    vec3 rawG = refract(rd, n, 1.0 / max(1.01, effIOR));
+    vec3 rawR = refract(rd, n, 1.0 / max(1.01, effIOR - disp));
+    vec3 rawB = refract(rd, n, 1.0 / max(1.01, effIOR + disp));
+    vec3 rdG = (length(rawG) > 0.001) ? normalize(rawG) : reflDir;
+    vec3 rdR = (length(rawR) > 0.001) ? normalize(rawR) : reflDir;
+    vec3 rdB = (length(rawB) > 0.001) ? normalize(rawB) : reflDir;
 
     bool hitTextInside = false;
     vec3 transCol = traceInteriorChromatic(p, rdG, rdR, rdB, effIOR, disp, hitTextInside);
 
-    // Frosted glass diffusion (preserves text readability!)
     if (uFrost > 0.01) {
       vec3 frostBlur = mix(sampleEnvironment(rd), uBaseTint * uLightColor * 0.55, 0.45);
       float frostMix = hitTextInside ? (uFrost * 0.42) : (uFrost * 0.72);
       transCol = mix(transCol, mix(transCol, frostBlur, 0.52), frostMix);
     }
 
-    // Keep engraved text visible even in Liquid Mercury mode
     float reflectBlend = clamp(fres * uReflection * 0.74 + uMetalness * (hitTextInside ? 0.36 : 0.68), 0.0, 0.94);
     vec3 glassCol = mix(transCol * uBaseTint, reflCol * uBaseTint, reflectBlend);
     glassCol += reflCol * (fres * uReflection * 0.34);
 
-    // Rim lighting halo
     float rim = pow(1.0 - ndv, 3.0) * uRimLight;
     glassCol += uRimColor * rim * 0.50;
 
-    // Frozen ice crystalline edge glint
     float freezeAmt = clamp(uFreeze + uIcePreset, 0.0, 1.0);
     if (freezeAmt > 0.05) {
       float frostEdge = pow(1.0 - ndv, 2.2) * (0.5 + 0.5 * noise3D(p * 14.0));
@@ -622,7 +650,6 @@ void main() {
       finalGlass = mix(glassCol, mix(glassCol, uBaseTint * (0.35 + 0.65 * max(dot(n, uLightDir), 0.0)), 0.55), densityMix);
     }
 
-    // X-Ray Diagnostic Mode overlay
     if (uXray > 0.01) {
       float scanLine = 0.5 + 0.5 * sin(p.y * 55.0 - uTime * 3.0);
       vec3 xrayShell = vec3(0.08, 0.48, 0.85) * pow(1.0 - ndv, 1.8) * (1.2 + 0.35 * scanLine);
@@ -630,13 +657,11 @@ void main() {
       finalGlass = mix(finalGlass, xrayInner, uXray);
     }
 
-    // Light Experiment surface beam alignment highlight
     if (uLightExp > 0.05) {
       float beamAlign = pow(max(dot(n, uLightDir), 0.0), 8.0);
       finalGlass += uLightColor * beamAlign * 0.38 * uLightExp;
     }
 
-    // Smooth analytic anti-aliasing along silhouette edge
     float edgeAA = smoothstep(0.0, 0.075, ndv);
     col = mix(col, finalGlass, mix(0.65, 1.0, edgeAA));
   } else if (hitId == 2) {
@@ -649,11 +674,9 @@ void main() {
     col = mix(col, coreCol, 0.85);
   }
 
-  // Subtle cinematic vignette
   float vig = 1.0 - dot(uv * 0.50, uv * 0.50);
   col *= clamp(vig, 0.64, 1.05);
 
-  // ACES Filmic Tone Mapping
   col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
   col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
 

@@ -23,8 +23,12 @@ function createProgram(gl, vsSrc, fsSrc) {
   gl.attachShader(prog, fs);
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    const log = gl.getProgramInfoLog(prog);
-    throw new Error('Program link error: ' + log);
+    const log = (gl.getProgramInfoLog(prog) || '').trim();
+    const lost = gl.isContextLost();
+    const errCode = gl.getError();
+    throw new Error(
+      `Program link error: ${log || (lost ? 'WebGL context lost during GPU shader compilation' : `driver failed (glError=${errCode})`)}`
+    );
   }
   gl.deleteShader(vs);
   gl.deleteShader(fs);
@@ -112,6 +116,14 @@ function init() {
     .forEach(name => { uP[name] = gl.getUniformLocation(particleProg, name); });
 
   const quadVao = gl.createVertexArray();
+  const quadVbo = gl.createBuffer();
+  gl.bindVertexArray(quadVao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadVbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const locPos = gl.getAttribLocation(crystalProg, 'aPos');
+  gl.enableVertexAttribArray(locPos);
+  gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
 
   const MAX_PARTICLES = 900;
   const particleSeeds = new Float32Array(MAX_PARTICLES * 4);
